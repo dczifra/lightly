@@ -1,0 +1,2 @@
+IMAGE_NAME=doma945/lighly
+REPO_NAME=lightly  # This affect the folder structure created by docker_run.sh script
