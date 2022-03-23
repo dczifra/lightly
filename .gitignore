@@ -39,3 +39,4 @@ tests/UNMOCKED_end2end_tests/test_magic_on_branch.sh
 
 data/*
 *__pycache__*
+benchmark_logs*
