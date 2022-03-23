@@ -66,14 +66,14 @@ from pytorch_lightning.loggers import TensorBoardLogger
 logs_root_dir = os.path.join(os.getcwd(), 'benchmark_logs')
 
 # set max_epochs to 800 for long run (takes around 10h on a single V100)
-max_epochs = 200
+max_epochs = 1
 num_workers = 8
 knn_k = 200
 knn_t = 0.1
 classes = 10
 
 # Set to True to enable Distributed Data Parallel training.
-distributed = False
+distributed = True
 
 # Set to True to enable Synchronized Batch Norm (requires distributed=True). 
 # If enabled the batch norm is calculated over all gpus, otherwise the batch
@@ -84,16 +84,17 @@ sync_batchnorm = False
 # the loss (requires distributed=True).
 # If enabled then the loss on every gpu is calculated with features from all 
 # gpus, otherwise only features from the same gpu are used.
-gather_distributed = False 
+gather_distributed = True 
 
 # benchmark
 n_runs = 1 # optional, increase to create multiple runs and report mean + std
-batch_size = 128
+batch_size = 512
 lr_factor = batch_size / 128 # scales the learning rate linearly with batch size
 
 # use a GPU if available
-gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-
+#gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
+gpus = 4 if torch.cuda.is_available() else 0
+print(gpus)
 if distributed:
     distributed_backend = 'ddp'
     # reduce batch size for distributed training
@@ -126,8 +127,8 @@ else:
 #  L horse/
 #  L ship/
 #  L truck/
-path_to_train = '/datasets/cifar10/train/'
-path_to_test = '/datasets/cifar10/test/'
+path_to_train = './data/cifar10/train/'
+path_to_test = './data/cifar10/test/'
 
 # Use SimCLR augmentations, additionally, disable blur for cifar10
 collate_fn = lightly.data.SimCLRCollateFunction(
