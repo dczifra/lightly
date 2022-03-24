@@ -9,7 +9,7 @@ import pytorch_lightning as pl
 from lightly.utils import BenchmarkModule
 from lightly.models.resnet import ResNetGenerator
 
-from lightly.loss import NegativeCosineSimilarity, NTXentLoss, SwaVLoss, TsLoss
+from lightly.loss import NegativeCosineSimilarity, NTXentLoss, SwaVLoss, TsLoss, TwistLoss
 from lightly.models.modules.heads import SwaVProjectionHead, SwaVPrototypes, SimCLRProjectionHead, SimSiamPredictionHead, ProjectionHead
 
 gather_distributed = False 
@@ -314,7 +314,7 @@ class SimSiam_ts_Model(BenchmarkModule):
         return [optim], [scheduler]
 
 class TsModel(BenchmarkModule):
-    def __init__(self, dataloader_kNN, dataloader_prototype, num_classes, max_epochs):
+    def __init__(self, dataloader_kNN, dataloader_prototype, num_classes, lr_factor, max_epochs):
         super().__init__(dataloader_kNN, num_classes)
         # create a ResNet backbone and remove the classification head
         resnet = ResNetGenerator('resnet-18')
@@ -339,6 +339,7 @@ class TsModel(BenchmarkModule):
             )
         ])
         self.criterion = TsLoss(gather_supports=True)
+        self.lr_factor = lr_factor
 
         self.max_epochs = max_epochs
         self.dataloader_prototype = dataloader_prototype
@@ -379,9 +380,84 @@ class TsModel(BenchmarkModule):
     def configure_optimizers(self):
         optim = torch.optim.SGD(
             self.parameters(), 
-            lr=6e-2, # no lr-scaling, results in better training stability
+            lr=2*6e-2, # no lr-scaling, results in better training stability
+            #lr=1e-3 * self.lr_factor,
             momentum=0.9,
             weight_decay=5e-4
+        )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, self.max_epochs)
+        return [optim], [scheduler]
+
+class TwistModel(BenchmarkModule):
+    def __init__(self, dataloader_kNN, dataloader_prototype, num_classes, lr_factor, max_epochs, world_size):
+        super().__init__(dataloader_kNN, num_classes)
+        # create a ResNet backbone and remove the classification head
+        resnet = ResNetGenerator('resnet-18')
+        self.backbone = nn.Sequential(
+            *list(resnet.children())[:-1],
+            nn.AdaptiveAvgPool2d(1)
+        )
+        self.prediction_head = SimSiamPredictionHead(2048, 512, 2048)
+        # use a 2-layer projection head for cifar10 as described in the paper
+        self.projection_head = ProjectionHead([
+            (
+                512,
+                2048,
+                nn.BatchNorm1d(2048),
+                nn.ReLU(inplace=True)
+            ),
+            (
+                2048,
+                2048,
+                nn.BatchNorm1d(2048),
+                None
+            )
+        ])
+        self.criterion = TwistLoss(0.0, 0.6, world_size = world_size)
+        self.lr_factor = lr_factor
+
+        self.max_epochs = max_epochs
+        self.dataloader_prototype = dataloader_prototype
+        self.supervised_iterator = iter(self.dataloader_prototype)
+    
+    def next_prototypes(self):
+        try:
+            sdata, lab, _ = next(self.supervised_iterator)                                                                                                              
+        except Exception:
+            self.supervised_iterator = iter(self.dataloader_prototype)
+            print(f'len.supervised_loader: {len(self.supervised_iterator)}')
+            sdata,lab, _ = next(self.supervised_iterator)
+        finally:
+            pass
+        return sdata.to(self.dummy_param.device)
+    
+    def forward(self, x):
+        f = self.backbone(x).flatten(start_dim=1)
+        z = self.projection_head(f)
+        p = self.prediction_head(z)
+        #p = z
+        z = z.detach()
+        return z, p
+
+    def training_step(self, batch, batch_idx):
+
+        (x0, x1), _, _ = batch
+        with torch.cuda.amp.autocast(enabled=False):
+            z0, p0 = self.forward(x0)
+            z1, p1 = self.forward(x1)
+
+            loss = 0.5 * (self.criterion(z0, p1) + self.criterion(z1, p0))
+        
+        self.log('train_loss_ssl', loss)
+        return loss
+
+    def configure_optimizers(self):
+        optim = torch.optim.SGD(
+            self.parameters(), 
+            #lr=6e-2, # no lr-scaling, results in better training stability
+            lr=4*8e-3 * self.lr_factor,
+            momentum=0.9,
+            weight_decay=1e-6
         )
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, self.max_epochs)
         return [optim], [scheduler]

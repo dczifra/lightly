@@ -9,7 +9,7 @@ import lightly.data as ldata
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from src.models import SwaVModel, SimCLRModel, SimSiamModel, SwaV_ts_Model, SimSiam_ts_Model, TsModel
+from src.models import SwaVModel, SimCLRModel, SimSiamModel, SwaV_ts_Model, SimSiam_ts_Model, TsModel, TwistModel
 
 # === Params ===
 dataset = 'cifar10'
@@ -145,7 +145,8 @@ dataloader_test = torch.utils.data.DataLoader(
 
 for model in [
         #SimSiamModel(dataloader_train_kNN, out_size, max_epochs),
-        TsModel(dataloader_train_kNN, dataloader_prototypes, out_size, max_epochs)
+        #TsModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs)
+        TwistModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs, gpus)
         ]:
     pl.seed_everything(seed)
     
@@ -154,7 +155,7 @@ for model in [
     #model = SimSiamModel(dataloader_train_kNN, out_size, max_epochs)
     #model = SwaV_ts_Model(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs)
     #model = SimSiam_ts_Model(dataloader_train_kNN, dataloader_prototypes, out_size, max_epochs)
-    #model = TsModel(dataloader_train_kNN, dataloader_prototypes, out_size, max_epochs)
+    #model = TsModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs)
     
     
     logger = TensorBoardLogger(
