@@ -455,7 +455,7 @@ class TwistModel(BenchmarkModule):
         optim = torch.optim.SGD(
             self.parameters(), 
             #lr=6e-2, # no lr-scaling, results in better training stability
-            lr=4*8e-3 * self.lr_factor,
+            lr=2*6e-2 * self.lr_factor,
             momentum=0.9,
             weight_decay=1e-6
         )
