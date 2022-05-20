@@ -20,8 +20,13 @@ def snn(query, supports, gather_supports, tau = 0.1):
         #exit(1)
         supports = torch.cat(GatherLayer.apply(supports), 0)
 
-    # Step 3: compute similarlity between local embeddings
-    return softmax(query @ supports.T / tau)
+    #print(torch.sum(query @ supports.T, dim=0).shape, (query @ su
+    mtx = query @ supports.T
+    M,N = mtx.shape[0], mtx.shape[1]
+    #mtx = mtx[:(M//2)]+mtx[(M//2):]
+    mtx = mtx[:,0*(N//8):(1)*(N//8)]+mtx[:,1*(N//8):(2)*(N//8)]+mtx[:,2*(N//8):(3)*(N//8)]
+    #mtx = torch.sum(*[mtx[:,i*(N//8):(i+1)*(N//8)] for i in range(8)])
+    return softmax(mtx / tau)
 
 class TsLoss(torch.nn.Module):
     def __init__(self, gather_supports, eps: float = 1e-4) -> None:
@@ -38,8 +43,8 @@ class TsLoss(torch.nn.Module):
         self.gather_supports = gather_supports
 
     def forward(self, z: torch.Tensor, p: torch.Tensor, supp: torch.Tensor) -> torch.Tensor:
-        multicrop = 0
-        batch_size = len(z) // (2+multicrop)
+        #multicrop = 0
+        #batch_size = len(z) // (2+multicrop)
 
         probs = snn(p, supp, self.gather_supports)
 
@@ -48,9 +53,9 @@ class TsLoss(torch.nn.Module):
         with torch.no_grad():
             targets = snn(z, supp.detach(), self.gather_supports)
             targets = sharpen(targets)
-            if multicrop > 0:
-                mc_target = 0.5*(targets[:batch_size]+targets[batch_size:])
-                targets = torch.cat([targets, *[mc_target for _ in range(multicrop)]], dim=0)
+            #if multicrop > 0:
+            #    mc_target = 0.5*(targets[:batch_size]+targets[batch_size:])
+            #    targets = torch.cat([targets, *[mc_target for _ in range(multicrop)]], dim=0)
             targets[targets < self.eps] *= 0  # numerical stability
 
         # Step 3: compute cross-entropy loss H(targets, queries)

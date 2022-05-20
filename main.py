@@ -1,5 +1,11 @@
 # pip install lightly_utils pytorch_lightning
 
+# TODO:
+#     * proto collate for TS setup
+
+
+
+
 import os
 import torch
 import torchvision
@@ -9,7 +15,7 @@ import lightly.data as ldata
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 
-from src.models import SwaVModel, SimCLRModel, SimSiamModel, SwaV_ts_Model, SimSiam_ts_Model, TsModel, TwistModel
+from src.models import SwaVModel, SimCLRModel, SimSiamModel, SwaV_ts_Model, SimSiam_ts_Model, TsModel, TwistModel, SimpleModel
 
 # === Params ===
 dataset = 'cifar10'
@@ -54,11 +60,29 @@ if dataset == "cifar10":
         input_size=32,
         gaussian_blur=0.0,
     )
-
+    """
+    swav_collate_fn = ldata.SwaVCollateFunction(
+        crop_sizes=[32, 32],
+        crop_counts=[2, 6], # 2 crops @ 32x32px
+        crop_min_scales=[0.5, 0.3],
+        crop_max_scales=[1.0, 0.75],
+        gaussian_blur=0,
+    )
+    """
     swav_collate_fn = ldata.SwaVCollateFunction(
         crop_sizes=[32],
-        crop_counts=[2], # 2 crops @ 32x32px
-        crop_min_scales=[0.14],
+        crop_counts=[3], # 2 crops @ 32x32px
+        crop_min_scales=[0.08],
+        gaussian_blur=0,
+    )
+
+    #collate_fn = swav_collate_fn
+    proto_batch = 512
+    proto_collate = ldata.SwaVCollateFunction(
+        crop_sizes=[32],
+        crop_counts=[1], # 2 crops @ 32x32px
+        crop_min_scales=[1.0],
+        crop_max_scales=[1.0],
         gaussian_blur=0,
     )
 else:
@@ -79,7 +103,7 @@ if dataset == "cifar10":
 else:
     test_transforms = torchvision.transforms.Compose([
         torchvision.transforms.Resize(256),
-        torchvision.transforms.CenterCrop(114),
+        torchvision.transforms.CenterCrop(224),
         torchvision.transforms.ToTensor(),
         torchvision.transforms.Normalize(
             mean=ldata.collate.imagenet_normalize['mean'],
@@ -119,9 +143,10 @@ dataloader_train_kNN = torch.utils.data.DataLoader(
 )
 
 dataloader_prototypes = torch.utils.data.DataLoader(
-    dataset_train_kNN,
-    batch_size=batch_size,
+    dataset_train,
+    batch_size=proto_batch,
     shuffle=True,
+    collate_fn=swav_collate_fn,
     drop_last=True,
     num_workers=num_workers
 )
@@ -146,22 +171,25 @@ dataloader_test = torch.utils.data.DataLoader(
 for model in [
         #SimSiamModel(dataloader_train_kNN, out_size, max_epochs),
         #TsModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs)
-        TwistModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs, gpus)
+        #TwistModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs, gpus)
+        SimpleModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs, type="decentral", ratio=2.0)
         ]:
     pl.seed_everything(seed)
     
-    #model = SimCLRModel(dataloader_train_kNN, out_size, lr_scale, max_epochs)
-    #model = SwaVModel(dataloader_train_kNN, out_size, lr_scale, max_epochs)
+    #model = SimCLRModel(dataloader_train_kNN, out_size, lr_factor, max_epochs)
+    #model = SwaVModel(dataloader_train_kNN, out_size, lr_factor, max_epochs)
     #model = SimSiamModel(dataloader_train_kNN, out_size, max_epochs)
     #model = SwaV_ts_Model(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs)
     #model = SimSiam_ts_Model(dataloader_train_kNN, dataloader_prototypes, out_size, max_epochs)
     #model = TsModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs)
+    #model = TsModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs, type="selflabel")
+    #model = SimpleModel(dataloader_train_kNN, dataloader_prototypes, out_size, lr_factor, max_epochs, type="")
     
     
     logger = TensorBoardLogger(
         save_dir=os.path.join('lightning_logs', dataset),
         name='',
-        sub_dir=str(model.__class__.__name__),
+        sub_dir=str(model.__class__.__name__+" "+model.type),
         version=None,
     )
     
